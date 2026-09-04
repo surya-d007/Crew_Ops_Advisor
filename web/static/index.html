@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Ask operational questions against the dCortex Air crew dataset.">
+  <title>Crew Ops Advisor</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Crew Ops Advisor home">
+      <span class="brand-mark">C</span>
+      <span><strong>Crew Ops</strong><small>ADVISOR</small></span>
+    </a>
+    <div class="status"><span></span> MCP connected</div>
+  </header>
+
+  <main class="shell">
+    <section id="hero" class="hero">
+      <div class="eyebrow"><span>✦</span> AI-POWERED OPERATIONS</div>
+      <h1>Ask your crew operations<br><em>question.</em></h1>
+      <p>Search flights, check legal coverage, assess reserves, and understand operational risk—grounded in your MCP dataset.</p>
+
+      <form id="query-form" class="composer">
+        <textarea id="question" rows="1" maxlength="4000" aria-label="Crew operations question" placeholder="Ask about a flight, pairing, crew member, or disruption…" required></textarea>
+        <button id="submit" type="submit" aria-label="Send question">
+          <span>Ask advisor</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+      </form>
+
+      <div class="suggestions" aria-label="Example questions">
+        <button type="button">Can C-2210 cover P-2291?</button>
+        <button type="button">Which flights are affected by a BLR closure?</button>
+        <button type="button">Show high duty-hour crew</button>
+      </div>
+    </section>
+
+    <section id="conversation" class="conversation" aria-live="polite" hidden>
+      <div id="user-message" class="user-message"></div>
+
+      <article id="work-card" class="work-card">
+        <div class="work-heading">
+          <span class="spark">✦</span>
+          <div>
+            <h2>Working on it</h2>
+            <p id="live-status">Understanding what you’re looking for…</p>
+          </div>
+          <span id="elapsed" class="elapsed">0s</span>
+        </div>
+
+        <div id="timeline" class="timeline"></div>
+      </article>
+
+      <article id="answer-card" class="answer-card" hidden>
+        <div class="answer-heading">
+          <span class="answer-icon">✦</span>
+          <div><span>CREW OPS ADVISOR</span><h2>Answer</h2></div>
+        </div>
+        <div id="answer-content" class="answer-content"></div>
+      </article>
+
+      <article id="error-card" class="error-card" hidden>
+        <strong>Something went wrong</strong>
+        <p id="error-content"></p>
+      </article>
+
+      <button id="new-query" class="new-query" type="button" hidden>Ask another question</button>
+    </section>
+  </main>
+
+  <footer>All times UTC · Costs in INR · Answers grounded in MCP tool results</footer>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

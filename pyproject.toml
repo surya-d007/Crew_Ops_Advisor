@@ -1,0 +1,26 @@
+[project]
+name = "crew-ops-advisor"
+version = "0.1.0"
+description = "OpenAI agent backed by MCP tools for the Crew Ops Advisor dataset"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.2,<2",
+    "openai>=2,<3",
+    "python-dotenv>=1.0,<2",
+    "rich>=13,<15",
+    "starlette>=0.40,<1",
+    "uvicorn>=0.30,<1",
+]
+
+[project.scripts]
+crew-ops-advisor = "main:run"
+crew-ops-mcp = "crew_ops.mcp_server:run"
+crew-ops-web = "crew_ops.web_app:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["crew_ops"]
