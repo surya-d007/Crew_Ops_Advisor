@@ -15,8 +15,8 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from crew_ops.agent import CrewOpsAgent
 from crew_ops.openai_client import OpenAIClient, OpenAIClientError
+from crew_ops.reengineering_agent import ReengineeredCrewOpsAdvisor
 
 
 load_dotenv()
@@ -56,17 +56,28 @@ async def async_main(args: argparse.Namespace) -> int:
         args=["-m", "crew_ops.mcp_server"],
         env=os.environ.copy(),
     )
-    llm = OpenAIClient(api_key=os.getenv("OPENAI_API_KEY", ""), model=args.model)
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    classifier_model = os.getenv("OPENAI_CLASSIFIER_MODEL", "").strip() or "gpt-4o-mini"
+    checker_model = os.getenv("OPENAI_REENGINEERING_MODEL", "").strip() or "gpt-4o-mini"
+    legal_model = os.getenv("OPENAI_LEGAL_MODEL", "").strip() or args.model
 
     async with stdio_client(server) as (read_stream, write_stream):
         async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
-            agent = CrewOpsAgent(session, llm, verbose=args.verbose)
-            await agent.initialize()
+            async def ask_question(question: str) -> str:
+                advisor = ReengineeredCrewOpsAdvisor(
+                    session,
+                    OpenAIClient(api_key=api_key, model=args.model),
+                    lambda: OpenAIClient(api_key=api_key, model=classifier_model),
+                    lambda: OpenAIClient(api_key=api_key, model=checker_model),
+                    lambda: OpenAIClient(api_key=api_key, model=legal_model),
+                    verbose=args.verbose,
+                )
+                return await advisor.ask(question)
 
             if args.question:
                 try:
-                    answer = await agent.ask(" ".join(args.question))
+                    answer = await ask_question(" ".join(args.question))
                 except OpenAIClientError as exc:
                     print(f"Error: {exc}", file=sys.stderr)
                     return 1
@@ -85,7 +96,7 @@ async def async_main(args: argparse.Namespace) -> int:
                 if not question:
                     continue
                 try:
-                    answer = await agent.ask(question)
+                    answer = await ask_question(question)
                 except OpenAIClientError as exc:
                     print(f"Error: {exc}", file=sys.stderr)
                     return 1

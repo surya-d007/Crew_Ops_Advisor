@@ -83,6 +83,8 @@ Configure the git-ignored `.env` file:
 ```dotenv
 OPENAI_API_KEY=your-openai-api-key
 OPENAI_MODEL=gpt-5.6-terra
+OPENAI_CLASSIFIER_MODEL=gpt-4o-mini
+OPENAI_REENGINEERING_MODEL=gpt-4o-mini
 CREW_OPS_VERBOSE=0
 ```
 
@@ -115,5 +117,18 @@ real MCP tool call while the agent works. Each row shows the tool name, its inpu
 purpose, completion state, and an expandable view of the returned evidence. The
 final OpenAI response appears beneath the completed tool timeline.
 
-The server reads `OPENAI_API_KEY` and `OPENAI_MODEL` from `.env`. Optional server
-settings are `WEB_HOST` (default `127.0.0.1`) and `WEB_PORT` (default `8000`).
+The server reads `OPENAI_API_KEY` and `OPENAI_MODEL` from `.env`. A fast, tool-free
+LLM first returns `YES` or `NO` to decide whether a completed solution needs a
+re-engineering check. The check is used only for action, legality, recommendation,
+and recovery questions. It can access only basic read/search MCP tools and cannot see
+deterministic assessment, aggregation, counting, scenario, or evaluation tools.
+
+For a `YES` decision, a fourth Legal Compliance Agent then loads the complete
+`rules.json` through MCP and checks the proposed action against every rule. It marks
+each rule `PASS`, `FAIL`, `NOT APPLICABLE`, or `UNKNOWN`, and its checked response is
+used as the final answer. For `NO`, both extra checking agents are skipped.
+
+`OPENAI_CLASSIFIER_MODEL` and `OPENAI_REENGINEERING_MODEL` default to `gpt-4o-mini`
+to keep this extra path quick. `OPENAI_LEGAL_MODEL` is optional and defaults to the
+main `OPENAI_MODEL`. Optional server settings are `WEB_HOST` (default `127.0.0.1`)
+and `WEB_PORT` (default `8000`).

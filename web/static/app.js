@@ -4,12 +4,11 @@ const submitButton = document.querySelector('#submit');
 const hero = document.querySelector('#hero');
 const conversation = document.querySelector('#conversation');
 const userMessage = document.querySelector('#user-message');
-const timeline = document.querySelector('#timeline');
-const workCard = document.querySelector('#work-card');
-const liveStatus = document.querySelector('#live-status');
-const elapsed = document.querySelector('#elapsed');
+const agentFlow = document.querySelector('#agent-flow');
 const answerCard = document.querySelector('#answer-card');
 const answerContent = document.querySelector('#answer-content');
+const answerKicker = document.querySelector('#answer-kicker');
+const answerTitle = document.querySelector('#answer-title');
 const errorCard = document.querySelector('#error-card');
 const errorContent = document.querySelector('#error-content');
 const newQuery = document.querySelector('#new-query');
@@ -38,9 +37,35 @@ const TOOL_COPY = {
   get_question: ['Loading evaluation question', 'Reviewing the selected public evaluation prompt.']
 };
 
-let timer;
-let startedAt;
 const steps = new Map();
+const agentCards = new Map();
+
+const AGENTS = {
+  classifier: {
+    order: 'AGENT 01',
+    name: 'Request Classifier',
+    role: 'Decides if the solution needs a raw-data check',
+    image: '/static/images/classifier-agent.png'
+  },
+  solver: {
+    order: 'AGENT 02',
+    name: 'Crew Ops Solver',
+    role: 'Builds the answer using the complete MCP toolkit',
+    image: '/static/images/solver-agent.png'
+  },
+  reengineering: {
+    order: 'AGENT 03',
+    name: 'Re-engineering Checker',
+    role: 'Checks key solution inputs using basic read tools',
+    image: '/static/images/reengineering-agent.png'
+  },
+  legal: {
+    order: 'AGENT 04',
+    name: 'Legal Compliance Agent',
+    role: 'Checks the proposed action against every rule in rules.json',
+    image: '/static/images/legal-agent.png'
+  }
+};
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, char => ({
@@ -122,7 +147,72 @@ function compactArgs(args) {
   return entries.slice(0, 4).map(([key, value]) => `${key.replaceAll('_', ' ')}: ${value}`).join(' · ');
 }
 
+function ensureAgentCard(agentName) {
+  if (agentCards.has(agentName)) return agentCards.get(agentName);
+  const normalizedName = String(agentName || 'solver').toLowerCase();
+  const agent = AGENTS[normalizedName] || {
+    order: 'AGENT',
+    name: normalizedName.replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase()),
+    role: 'Processes this stage of the request',
+    image: AGENTS.solver.image
+  };
+  const card = document.createElement('article');
+  card.className = 'agent-card active';
+  card.dataset.agent = normalizedName;
+  card.innerHTML = `
+    <header class="agent-card-header">
+      <div class="agent-avatar"><img src="${agent.image}" alt="${escapeHtml(agent.name)} avatar"></div>
+      <div class="agent-identity">
+        <span>${agent.order}</span>
+        <h2>${escapeHtml(agent.name)}</h2>
+        <p>${escapeHtml(agent.role)}</p>
+      </div>
+      <div class="agent-state"><i></i><span>Working</span></div>
+    </header>
+    <section class="agent-tools" hidden>
+      <h3>Tool calls</h3>
+      <div class="agent-tool-list"></div>
+    </section>
+    <section class="agent-output" hidden>
+      <div class="agent-output-label">Agent output</div>
+      <div class="agent-output-content"></div>
+    </section>`;
+  agentFlow.appendChild(card);
+  agentCards.set(agentName, card);
+  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  return card;
+}
+
+function setAgentState(agentName, state, label) {
+  const card = ensureAgentCard(agentName);
+  card.classList.remove('active', 'complete', 'skipped', 'failed');
+  card.classList.add(state);
+  card.querySelector('.agent-state span').textContent = label;
+}
+
+function setAgentOutput(agentName, content, plain = false) {
+  const card = ensureAgentCard(agentName);
+  const output = card.querySelector('.agent-output');
+  output.hidden = false;
+  const target = output.querySelector('.agent-output-content');
+  target.innerHTML = plain ? `<strong>${escapeHtml(content)}</strong>` : renderMarkdown(content);
+  output.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function showNoToolsIfEmpty(agentName, message = 'No MCP tools were called.') {
+  const card = ensureAgentCard(agentName);
+  const toolList = card.querySelector('.agent-tool-list');
+  if (toolList.children.length) return;
+  card.querySelector('.agent-tools').hidden = false;
+  toolList.innerHTML = `<div class="no-tools">${escapeHtml(message)}</div>`;
+}
+
 function addToolStep(event) {
+  const agentName = event.agent || 'solver';
+  const card = ensureAgentCard(agentName);
+  const toolSection = card.querySelector('.agent-tools');
+  toolSection.hidden = false;
+  const toolList = card.querySelector('.agent-tool-list');
   const copy = TOOL_COPY[event.name] || [`Running ${event.name.replaceAll('_', ' ')}`, 'Retrieving the information needed to answer your question.'];
   const args = compactArgs(event.arguments);
   const node = document.createElement('div');
@@ -134,9 +224,8 @@ function addToolStep(event) {
       <div class="step-title"><span>${escapeHtml(copy[0])}</span><code>${escapeHtml(event.name)}</code></div>
       <div class="step-description">${escapeHtml(args || copy[1])}</div>
     </div>`;
-  timeline.appendChild(node);
+  toolList.appendChild(node);
   steps.set(event.id, node);
-  liveStatus.textContent = copy[1];
   node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
@@ -150,32 +239,25 @@ function completeToolStep(event) {
   detail.className = 'tool-detail';
   detail.innerHTML = `<summary>View tool result</summary><pre>${escapeHtml(JSON.stringify(event.result, null, 2))}</pre>`;
   node.querySelector('.step-copy').appendChild(detail);
-  liveStatus.textContent = event.succeeded ? 'Tool completed—reviewing the returned evidence…' : 'A tool failed—checking whether I can continue…';
 }
 
 function resetUI(question) {
-  clearInterval(timer);
   steps.clear();
-  timeline.replaceChildren();
+  agentCards.clear();
+  agentFlow.replaceChildren();
   userMessage.textContent = question;
   answerContent.replaceChildren();
+  answerKicker.textContent = 'CREW OPS ADVISOR';
+  answerTitle.textContent = 'Answer';
   answerCard.hidden = true;
   errorCard.hidden = true;
   newQuery.hidden = true;
-  workCard.hidden = false;
-  liveStatus.textContent = 'Understanding what you’re looking for…';
-  elapsed.textContent = '0s';
   hero.hidden = true;
   conversation.hidden = false;
-  startedAt = Date.now();
-  timer = setInterval(() => {
-    elapsed.textContent = `${Math.floor((Date.now() - startedAt) / 1000)}s`;
-  }, 1000);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function finishUI() {
-  clearInterval(timer);
   submitButton.disabled = false;
   newQuery.hidden = false;
 }
@@ -207,14 +289,37 @@ async function runQuery(question) {
       for (const line of lines) {
         if (!line.trim()) continue;
         const event = JSON.parse(line);
-        if (event.type === 'thinking') {
-          liveStatus.textContent = event.round === 1 ? 'Understanding your request and choosing the right data tools…' : 'Connecting the evidence and deciding what to check next…';
+        if (event.type === 'classification_started') {
+          ensureAgentCard('classifier');
+          showNoToolsIfEmpty('classifier', 'No MCP tools — classification only.');
+        } else if (event.type === 'classification_completed') {
+          setAgentOutput('classifier', event.needs_check ? 'YES — re-engineering check required' : 'NO — direct answer only', true);
+          setAgentState('classifier', 'complete', 'Complete');
+        } else if (event.type === 'thinking') {
+          ensureAgentCard(event.agent || 'solver');
         } else if (event.type === 'tool_started') {
           addToolStep(event);
         } else if (event.type === 'tool_completed') {
           completeToolStep(event);
+        } else if (event.type === 'solver_completed') {
+          showNoToolsIfEmpty('solver');
+          setAgentOutput('solver', event.content);
+          setAgentState('solver', 'complete', 'Complete');
+        } else if (event.type === 'reengineering_started') {
+          ensureAgentCard('reengineering');
+        } else if (event.type === 'reengineering_completed') {
+          showNoToolsIfEmpty('reengineering');
+          setAgentOutput('reengineering', event.content);
+          setAgentState('reengineering', 'complete', 'Complete');
+        } else if (event.type === 'legal_started') {
+          ensureAgentCard('legal');
+        } else if (event.type === 'legal_completed') {
+          showNoToolsIfEmpty('legal');
+          setAgentOutput('legal', event.content);
+          setAgentState('legal', 'complete', 'Complete');
         } else if (event.type === 'answer') {
-          liveStatus.textContent = 'Analysis complete';
+          answerKicker.textContent = event.legal_checked ? 'LEGAL COMPLIANCE COMPLETE' : 'CREW OPS ADVISOR';
+          answerTitle.textContent = 'Final answer';
           answerContent.innerHTML = renderMarkdown(event.content);
           answerCard.hidden = false;
           answerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -229,7 +334,9 @@ async function runQuery(question) {
   } catch (error) {
     errorContent.textContent = error.message || 'Unknown error';
     errorCard.hidden = false;
-    liveStatus.textContent = 'Stopped before completing the answer';
+    for (const [name, card] of agentCards) {
+      if (card.classList.contains('active')) setAgentState(name, 'failed', 'Stopped');
+    }
     finishUI();
   }
 }
