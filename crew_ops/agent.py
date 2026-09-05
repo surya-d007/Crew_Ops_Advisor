@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol, Set
 
 from mcp import ClientSession
 
@@ -47,7 +47,7 @@ Do not access or mention private held-out judging scenarios.
 """
 
 
-def _ollama_tools(mcp_tools: Any) -> List[Dict[str, Any]]:
+def _chat_tools(mcp_tools: Any) -> List[Dict[str, Any]]:
     return [
         {
             "type": "function",
@@ -61,7 +61,7 @@ def _ollama_tools(mcp_tools: Any) -> List[Dict[str, Any]]:
     ]
 
 
-def _tool_result_text(result: Any) -> str:
+def tool_result_text(result: Any) -> str:
     parts = []
     for item in result.content:
         text = getattr(item, "text", None)
@@ -80,13 +80,16 @@ class CrewOpsAgent:
         max_rounds: int = 40,
         verbose: bool = False,
         event_handler: Optional[AgentEventHandler] = None,
+        system_prompt: str = SYSTEM_PROMPT,
+        allowed_tool_names: Optional[Set[str]] = None,
     ) -> None:
         self.session = session
         self.llm = llm
         self.max_rounds = max_rounds
         self.verbose = verbose
         self.event_handler = event_handler
-        self.messages: List[Dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        self.allowed_tool_names = allowed_tool_names
+        self.messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
         self.tools: List[Dict[str, Any]] = []
 
     async def _emit(self, event_type: str, **data: Any) -> None:
@@ -106,10 +109,16 @@ class CrewOpsAgent:
 
     async def initialize(self) -> None:
         listed = await self.session.list_tools()
-        self.tools = _ollama_tools(listed)
+        self.tools = _chat_tools(listed)
+        if self.allowed_tool_names is not None:
+            self.tools = [
+                tool
+                for tool in self.tools
+                if tool["function"]["name"] in self.allowed_tool_names
+            ]
         self._trace("MCP tools discovered", [tool["function"]["name"] for tool in self.tools])
 
-    async def ask(self, question: str) -> str:
+    async def ask(self, question: str, emit_answer: bool = True) -> str:
         self.messages.append({"role": "user", "content": question})
         await self._emit("query_started", question=question)
 
@@ -123,7 +132,8 @@ class CrewOpsAgent:
             if not tool_calls:
                 self._trace("LLM final response ready")
                 answer = assistant_message.get("content", "").strip()
-                await self._emit("answer", content=answer)
+                if emit_answer:
+                    await self._emit("answer", content=answer)
                 return answer
 
             for tool_index, tool_call in enumerate(tool_calls, start=1):
@@ -147,7 +157,7 @@ class CrewOpsAgent:
                 succeeded = True
                 try:
                     result = await self.session.call_tool(name, arguments)
-                    content = _tool_result_text(result)
+                    content = tool_result_text(result)
                     succeeded = not bool(result.isError)
                 except Exception as exc:
                     content = json.dumps({"error": str(exc)}, ensure_ascii=False)

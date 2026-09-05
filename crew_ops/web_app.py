@@ -18,8 +18,8 @@ from starlette.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from crew_ops.agent import CrewOpsAgent
 from crew_ops.openai_client import OpenAIClient
+from crew_ops.reengineering_agent import ReengineeredCrewOpsAdvisor
 
 
 load_dotenv()
@@ -40,10 +40,11 @@ async def _run_query(question: str, queue: asyncio.Queue[Dict[str, Any]]) -> Non
         await queue.put(event)
 
     try:
-        llm = OpenAIClient(
-            api_key=os.getenv("OPENAI_API_KEY", ""),
-            model=os.getenv("OPENAI_MODEL", "gpt-5.6-terra"),
-        )
+        api_key = os.getenv("OPENAI_API_KEY", "")
+        solver_model = os.getenv("OPENAI_MODEL", "gpt-5.6-terra")
+        classifier_model = os.getenv("OPENAI_CLASSIFIER_MODEL", "").strip() or "gpt-4o-mini"
+        checker_model = os.getenv("OPENAI_REENGINEERING_MODEL", "").strip() or "gpt-4o-mini"
+        legal_model = os.getenv("OPENAI_LEGAL_MODEL", "").strip() or solver_model
         server = StdioServerParameters(
             command=sys.executable,
             args=["-m", "crew_ops.mcp_server"],
@@ -52,9 +53,15 @@ async def _run_query(question: str, queue: asyncio.Queue[Dict[str, Any]]) -> Non
         async with stdio_client(server) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
-                agent = CrewOpsAgent(session, llm, event_handler=send)
-                await agent.initialize()
-                await agent.ask(question)
+                advisor = ReengineeredCrewOpsAdvisor(
+                    session,
+                    OpenAIClient(api_key=api_key, model=solver_model),
+                    lambda: OpenAIClient(api_key=api_key, model=classifier_model),
+                    lambda: OpenAIClient(api_key=api_key, model=checker_model),
+                    lambda: OpenAIClient(api_key=api_key, model=legal_model),
+                    event_handler=send,
+                )
+                await advisor.ask(question)
     except Exception as exc:
         await send({"type": "error", "message": str(exc)})
     finally:

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Ask operational questions against the dCortex Air crew dataset.">
   <title>Crew Ops Advisor</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v=4">
 </head>
 <body>
   <div class="ambient ambient-one"></div>
@@ -43,23 +43,12 @@
     <section id="conversation" class="conversation" aria-live="polite" hidden>
       <div id="user-message" class="user-message"></div>
 
-      <article id="work-card" class="work-card">
-        <div class="work-heading">
-          <span class="spark">✦</span>
-          <div>
-            <h2>Working on it</h2>
-            <p id="live-status">Understanding what you’re looking for…</p>
-          </div>
-          <span id="elapsed" class="elapsed">0s</span>
-        </div>
-
-        <div id="timeline" class="timeline"></div>
-      </article>
+      <div id="agent-flow" class="agent-flow"></div>
 
       <article id="answer-card" class="answer-card" hidden>
         <div class="answer-heading">
           <span class="answer-icon">✦</span>
-          <div><span>CREW OPS ADVISOR</span><h2>Answer</h2></div>
+          <div><span id="answer-kicker">CREW OPS ADVISOR</span><h2 id="answer-title">Answer</h2></div>
         </div>
         <div id="answer-content" class="answer-content"></div>
       </article>
@@ -74,6 +63,6 @@
   </main>
 
   <footer>All times UTC · Costs in INR · Answers grounded in MCP tool results</footer>
-  <script src="/static/app.js" defer></script>
+  <script src="/static/app.js?v=4" defer></script>
 </body>
 </html>
