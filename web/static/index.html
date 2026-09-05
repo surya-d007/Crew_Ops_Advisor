@@ -41,35 +41,22 @@
     </section>
 
     <section id="conversation" class="conversation" aria-live="polite" hidden>
-      <div id="user-message" class="user-message"></div>
+      <button id="new-chat-btn" class="new-chat-btn" type="button" title="Start a new conversation">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        <span>New chat</span>
+      </button>
 
-      <article id="work-card" class="work-card">
-        <div class="work-heading">
-          <span class="spark">✦</span>
-          <div>
-            <h2>Working on it</h2>
-            <p id="live-status">Understanding what you’re looking for…</p>
-          </div>
-          <span id="elapsed" class="elapsed">0s</span>
-        </div>
+      <div id="conversation-history"></div>
 
-        <div id="timeline" class="timeline"></div>
-      </article>
-
-      <article id="answer-card" class="answer-card" hidden>
-        <div class="answer-heading">
-          <span class="answer-icon">✦</span>
-          <div><span>CREW OPS ADVISOR</span><h2>Answer</h2></div>
-        </div>
-        <div id="answer-content" class="answer-content"></div>
-      </article>
-
-      <article id="error-card" class="error-card" hidden>
-        <strong>Something went wrong</strong>
-        <p id="error-content"></p>
-      </article>
-
-      <button id="new-query" class="new-query" type="button" hidden>Ask another question</button>
+      <div id="follow-up-composer" class="follow-up-composer" hidden>
+        <form id="follow-up-form" class="composer">
+          <textarea id="follow-up-question" rows="1" maxlength="4000" aria-label="Follow-up question" placeholder="Ask a follow-up question…" required></textarea>
+          <button type="submit" aria-label="Send follow-up">
+            <span>Ask</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </button>
+        </form>
+      </div>
     </section>
   </main>
 

@@ -3,16 +3,11 @@ const questionInput = document.querySelector('#question');
 const submitButton = document.querySelector('#submit');
 const hero = document.querySelector('#hero');
 const conversation = document.querySelector('#conversation');
-const userMessage = document.querySelector('#user-message');
-const timeline = document.querySelector('#timeline');
-const workCard = document.querySelector('#work-card');
-const liveStatus = document.querySelector('#live-status');
-const elapsed = document.querySelector('#elapsed');
-const answerCard = document.querySelector('#answer-card');
-const answerContent = document.querySelector('#answer-content');
-const errorCard = document.querySelector('#error-card');
-const errorContent = document.querySelector('#error-content');
-const newQuery = document.querySelector('#new-query');
+const conversationHistory = document.querySelector('#conversation-history');
+const followUpComposer = document.querySelector('#follow-up-composer');
+const followUpForm = document.querySelector('#follow-up-form');
+const followUpInput = document.querySelector('#follow-up-question');
+const newChatBtn = document.querySelector('#new-chat-btn');
 
 const TOOL_COPY = {
   get_crew: ['Checking crew profile', 'Looking up role, base, status, and aircraft ratings.'],
@@ -22,7 +17,7 @@ const TOOL_COPY = {
   count_flights: ['Counting matching flights', 'Calculating the exact number of scheduled flight legs.'],
   search_station_window: ['Checking the disruption window', 'Finding arrivals and departures inside the station closure period.'],
   get_pairing: ['Reviewing the pairing', 'Loading its flights, crew, report times, and release times.'],
-  get_crew_roster: ['Reviewing crew roster', 'Checking the crew member’s planned duties and pairings.'],
+  get_crew_roster: ['Reviewing crew roster', "Checking the crew member's planned duties and pairings."],
   get_flagged_roster_exceptions: ['Checking roster exceptions', 'Looking for known compliance problems in the roster.'],
   get_reserves: ['Searching reserve crew', 'Finding reserves whose date, base, and rank match the request.'],
   assess_reserves_for_aircraft_duty: ['Assessing reserve eligibility', 'Checking report window, base, rank, rating, status, and certifications.'],
@@ -30,7 +25,7 @@ const TOOL_COPY = {
   search_crew_by_rolling_duty: ['Calculating rolling duty hours', 'Finding crew at or above the requested duty-hour threshold.'],
   get_certifications: ['Checking certifications', 'Reviewing licence, medical, and training validity.'],
   search_certifications: ['Searching certification dates', 'Finding certifications in the requested expiry window.'],
-  get_risk_signal: ['Checking disruption risk', 'Loading the crew member’s supplied risk score and its drivers.'],
+  get_risk_signal: ['Checking disruption risk', "Loading the crew member's supplied risk score and its drivers."],
   get_rules: ['Reviewing operating rules', 'Loading the rules needed to evaluate legality.'],
   get_costs: ['Checking recovery costs', 'Loading the applicable callout, delay, positioning, and cancellation costs.'],
   list_scenarios: ['Reviewing scenarios', 'Finding relevant public operational scenarios.'],
@@ -38,9 +33,16 @@ const TOOL_COPY = {
   get_question: ['Loading evaluation question', 'Reviewing the selected public evaluation prompt.']
 };
 
-let timer;
-let startedAt;
 const steps = new Map();
+
+function getSessionId() {
+  let sessionId = sessionStorage.getItem('crewOpsSessionId');
+  if (!sessionId) {
+    sessionId = crypto.randomUUID();
+    sessionStorage.setItem('crewOpsSessionId', sessionId);
+  }
+  return sessionId;
+}
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, char => ({
@@ -122,7 +124,66 @@ function compactArgs(args) {
   return entries.slice(0, 4).map(([key, value]) => `${key.replaceAll('_', ' ')}: ${value}`).join(' · ');
 }
 
-function addToolStep(event) {
+function createTurnCard() {
+  const card = document.createElement('article');
+  card.className = 'turn-card';
+  return card;
+}
+
+function addUserMessage(card, question) {
+  const userDiv = document.createElement('div');
+  userDiv.className = 'user-message';
+  userDiv.textContent = question;
+  card.appendChild(userDiv);
+}
+
+function addWorkCard(card) {
+  const workCard = document.createElement('article');
+  workCard.className = 'work-card';
+  workCard.innerHTML = `
+    <div class="work-heading">
+      <span class="spark">✦</span>
+      <div>
+        <h2>Working on it</h2>
+        <p class="live-status">Understanding what you're looking for…</p>
+      </div>
+      <span class="elapsed">0s</span>
+    </div>
+    <div class="timeline"></div>
+  `;
+  card.appendChild(workCard);
+  return {
+    workCard,
+    timeline: workCard.querySelector('.timeline'),
+    liveStatus: workCard.querySelector('.live-status'),
+    elapsed: workCard.querySelector('.elapsed')
+  };
+}
+
+function addAnswerCard(card, content) {
+  const answerCard = document.createElement('article');
+  answerCard.className = 'answer-card';
+  answerCard.innerHTML = `
+    <div class="answer-heading">
+      <span class="answer-icon">✦</span>
+      <div><span>CREW OPS ADVISOR</span><h2>Answer</h2></div>
+    </div>
+    <div class="answer-content">${renderMarkdown(content)}</div>
+  `;
+  card.appendChild(answerCard);
+}
+
+function addErrorCard(card, error) {
+  const errorCard = document.createElement('article');
+  errorCard.className = 'error-card';
+  errorCard.innerHTML = `
+    <strong>Something went wrong</strong>
+    <p>${escapeHtml(error)}</p>
+  `;
+  card.appendChild(errorCard);
+}
+
+function addToolStep(timeline, liveStatus, event) {
   const copy = TOOL_COPY[event.name] || [`Running ${event.name.replaceAll('_', ' ')}`, 'Retrieving the information needed to answer your question.'];
   const args = compactArgs(event.arguments);
   const node = document.createElement('div');
@@ -140,7 +201,7 @@ function addToolStep(event) {
   node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function completeToolStep(event) {
+function completeToolStep(liveStatus, event) {
   const node = steps.get(event.id);
   if (!node) return;
   node.classList.remove('running');
@@ -153,42 +214,35 @@ function completeToolStep(event) {
   liveStatus.textContent = event.succeeded ? 'Tool completed—reviewing the returned evidence…' : 'A tool failed—checking whether I can continue…';
 }
 
-function resetUI(question) {
-  clearInterval(timer);
-  steps.clear();
-  timeline.replaceChildren();
-  userMessage.textContent = question;
-  answerContent.replaceChildren();
-  answerCard.hidden = true;
-  errorCard.hidden = true;
-  newQuery.hidden = true;
-  workCard.hidden = false;
-  liveStatus.textContent = 'Understanding what you’re looking for…';
-  elapsed.textContent = '0s';
-  hero.hidden = true;
-  conversation.hidden = false;
-  startedAt = Date.now();
-  timer = setInterval(() => {
+async function runQuery(question, isFollowUp) {
+  if (!isFollowUp) {
+    hero.hidden = true;
+    conversation.hidden = false;
+  }
+
+  const turnCard = createTurnCard();
+  conversationHistory.appendChild(turnCard);
+  addUserMessage(turnCard, question);
+
+  const { workCard, timeline, liveStatus, elapsed } = addWorkCard(turnCard);
+  followUpComposer.hidden = true;
+  followUpInput.value = '';
+  followUpInput.style.height = 'auto';
+
+  submitButton.disabled = true;
+
+  const startedAt = Date.now();
+  const intervalId = setInterval(() => {
     elapsed.textContent = `${Math.floor((Date.now() - startedAt) / 1000)}s`;
   }, 1000);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
 
-function finishUI() {
-  clearInterval(timer);
-  submitButton.disabled = false;
-  newQuery.hidden = false;
-}
-
-async function runQuery(question) {
-  resetUI(question);
-  submitButton.disabled = true;
+  turnCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   try {
     const response = await fetch('/api/query', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question })
+      body: JSON.stringify({ question, session_id: getSessionId() })
     });
     if (!response.ok) {
       const payload = await response.json();
@@ -210,34 +264,48 @@ async function runQuery(question) {
         if (event.type === 'thinking') {
           liveStatus.textContent = event.round === 1 ? 'Understanding your request and choosing the right data tools…' : 'Connecting the evidence and deciding what to check next…';
         } else if (event.type === 'tool_started') {
-          addToolStep(event);
+          addToolStep(timeline, liveStatus, event);
         } else if (event.type === 'tool_completed') {
-          completeToolStep(event);
+          completeToolStep(liveStatus, event);
         } else if (event.type === 'answer') {
           liveStatus.textContent = 'Analysis complete';
-          answerContent.innerHTML = renderMarkdown(event.content);
-          answerCard.hidden = false;
-          answerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          workCard.hidden = true;
+          addAnswerCard(turnCard, event.content);
+          turnCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
         } else if (event.type === 'error') {
           throw new Error(event.message);
         } else if (event.type === 'done') {
-          finishUI();
+          clearInterval(intervalId);
+          submitButton.disabled = false;
+          followUpComposer.hidden = false;
+          followUpInput.focus();
         }
       }
       if (done) break;
     }
   } catch (error) {
-    errorContent.textContent = error.message || 'Unknown error';
-    errorCard.hidden = false;
-    liveStatus.textContent = 'Stopped before completing the answer';
-    finishUI();
+    clearInterval(intervalId);
+    workCard.hidden = true;
+    addErrorCard(turnCard, error.message || 'Unknown error');
+    submitButton.disabled = false;
+    followUpComposer.hidden = false;
   }
 }
 
 form.addEventListener('submit', event => {
   event.preventDefault();
   const question = questionInput.value.trim();
-  if (question) runQuery(question);
+  if (!question) return;
+  questionInput.value = '';
+  questionInput.style.height = 'auto';
+  runQuery(question, false);
+});
+
+followUpForm.addEventListener('submit', event => {
+  event.preventDefault();
+  const question = followUpInput.value.trim();
+  if (!question) return;
+  runQuery(question, true);
 });
 
 questionInput.addEventListener('input', () => {
@@ -252,6 +320,18 @@ questionInput.addEventListener('keydown', event => {
   }
 });
 
+followUpInput.addEventListener('input', () => {
+  followUpInput.style.height = 'auto';
+  followUpInput.style.height = `${Math.min(followUpInput.scrollHeight, 160)}px`;
+});
+
+followUpInput.addEventListener('keydown', event => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    followUpForm.requestSubmit();
+  }
+});
+
 document.querySelectorAll('.suggestions button').forEach(button => {
   button.addEventListener('click', () => {
     questionInput.value = button.textContent;
@@ -259,11 +339,16 @@ document.querySelectorAll('.suggestions button').forEach(button => {
   });
 });
 
-newQuery.addEventListener('click', () => {
+newChatBtn.addEventListener('click', () => {
+  conversationHistory.replaceChildren();
+  steps.clear();
+  followUpComposer.hidden = true;
+  followUpInput.value = '';
   conversation.hidden = true;
   hero.hidden = false;
   questionInput.value = '';
   questionInput.style.height = 'auto';
   questionInput.focus();
+  sessionStorage.removeItem('crewOpsSessionId');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });

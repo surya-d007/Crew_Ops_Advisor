@@ -6,20 +6,19 @@ import asyncio
 import json
 import os
 import sys
+import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict
 
 from dotenv import load_dotenv
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from crew_ops.agent import CrewOpsAgent
-from crew_ops.openai_client import OpenAIClient
+from crew_ops.langchain_agent import close_agent, init_agent, stream_chat
 
 
 load_dotenv()
@@ -35,26 +34,12 @@ async def health(_: Request) -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
-async def _run_query(question: str, queue: asyncio.Queue[Dict[str, Any]]) -> None:
+async def _run_query(question: str, thread_id: str, queue: asyncio.Queue[Dict[str, Any]]) -> None:
     async def send(event: Dict[str, Any]) -> None:
         await queue.put(event)
 
     try:
-        llm = OpenAIClient(
-            api_key=os.getenv("OPENAI_API_KEY", ""),
-            model=os.getenv("OPENAI_MODEL", "gpt-5.6-terra"),
-        )
-        server = StdioServerParameters(
-            command=sys.executable,
-            args=["-m", "crew_ops.mcp_server"],
-            env=os.environ.copy(),
-        )
-        async with stdio_client(server) as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                agent = CrewOpsAgent(session, llm, event_handler=send)
-                await agent.initialize()
-                await agent.ask(question)
+        await stream_chat(question, thread_id, send)
     except Exception as exc:
         await send({"type": "error", "message": str(exc)})
     finally:
@@ -73,8 +58,10 @@ async def query(request: Request) -> StreamingResponse | JSONResponse:
     if len(question) > 4000:
         return JSONResponse({"error": "Question is too long (maximum 4,000 characters)."}, status_code=400)
 
+    thread_id = str(payload.get("session_id") or "").strip() or str(uuid.uuid4())
+
     queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
-    task = asyncio.create_task(_run_query(question, queue))
+    task = asyncio.create_task(_run_query(question, thread_id, queue))
 
     async def stream() -> AsyncIterator[bytes]:
         try:
@@ -94,6 +81,15 @@ async def query(request: Request) -> StreamingResponse | JSONResponse:
     )
 
 
+@asynccontextmanager
+async def lifespan(_: Starlette) -> AsyncIterator[None]:
+    await init_agent()
+    try:
+        yield
+    finally:
+        await close_agent()
+
+
 routes = [
     Route("/", homepage),
     Route("/health", health),
@@ -101,18 +97,27 @@ routes = [
     Mount("/static", StaticFiles(directory=STATIC_DIR), name="static"),
 ]
 
-app = Starlette(debug=False, routes=routes)
+app = Starlette(debug=False, routes=routes, lifespan=lifespan)
 
 
 def run() -> None:
     import uvicorn
 
-    uvicorn.run(
+    reload = os.getenv("RELOAD", "").lower() in {"1", "true", "yes"}
+    config = uvicorn.Config(
         "crew_ops.web_app:app",
         host=os.getenv("WEB_HOST", "127.0.0.1"),
         port=int(os.getenv("WEB_PORT", "8000")),
-        reload=False,
+        reload=reload,
     )
+    server = uvicorn.Server(config)
+
+    if sys.platform == "win32":
+        # uvicorn defaults to ProactorEventLoop on Windows, but psycopg's async
+        # driver (used by the Postgres checkpointer) requires a selector loop.
+        asyncio.run(server.serve(), loop_factory=asyncio.SelectorEventLoop)
+    else:
+        server.run()
 
 
 if __name__ == "__main__":

@@ -92,8 +92,20 @@ button, textarea { font: inherit; }
 .suggestions button { border: 1px solid #282c2b; border-radius: 999px; padding: 8px 12px; color: #7f8580; background: rgba(14,16,16,.6); font-size: 11px; cursor: pointer; }
 .suggestions button:hover { border-color: #454a47; color: #b9bdb9; }
 
-.conversation { padding: 56px 0 90px; }
+.conversation { padding: 56px 0 90px; position: relative; }
+
+.new-chat-btn { position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border: 1px solid #353938; border-radius: 10px; color: #b4b8b4; background: rgba(20, 22, 22, .8); cursor: pointer; font-size: 12px; font-weight: 600; transition: all .2s; }
+.new-chat-btn:hover { border-color: var(--orange); color: var(--text); background: rgba(20, 22, 22, 1); }
+.new-chat-btn svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2; fill: none; }
+
+#conversation-history { display: flex; flex-direction: column; gap: 32px; margin-top: 20px; }
+
+.turn-card { display: flex; flex-direction: column; gap: 14px; }
+
 .user-message { max-width: 680px; margin-left: auto; padding: 17px 21px; border: 1px solid #414443; border-radius: 17px 17px 5px 17px; color: #e6e7e3; background: #2a2c2c; font-size: 16px; line-height: 1.45; }
+
+.follow-up-composer { max-width: 840px; margin: 30px 0 0; }
+.follow-up-composer.composer { padding: 10px 10px 10px 20px; border: 1px solid #353938; border-radius: 17px; background: rgba(22,24,24,.94); }
 .work-card, .answer-card, .error-card { max-width: 840px; margin-top: 26px; border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(145deg, rgba(25,27,27,.97), rgba(16,18,18,.97)); box-shadow: 0 24px 70px rgba(0,0,0,.28); }
 .work-card { padding: 25px 26px 20px; }
 .work-heading { display: flex; align-items: flex-start; gap: 13px; }

@@ -1,0 +1,32 @@
+INFO:     Started server process [6960]
+INFO:     Waiting for application startup.
+ERROR:    Traceback (most recent call last):
+  File "D:\Personal Projects\dCortex-hackathon\.venv\Lib\site-packages\starlette\routing.py", line 694, in lifespan
+    async with self.lifespan_context(app) as maybe_state:
+               ~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\Shahid\AppData\Local\Python\pythoncore-3.14-64\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Personal Projects\dCortex-hackathon\crew_ops\web_app.py", line 86, in lifespan
+    await init_agent()
+  File "D:\Personal Projects\dCortex-hackathon\crew_ops\langchain_agent.py", line 58, in init_agent
+    checkpointer = await _checkpointer_cm.__aenter__()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Shahid\AppData\Local\Python\pythoncore-3.14-64\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Personal Projects\dCortex-hackathon\.venv\Lib\site-packages\langgraph\checkpoint\postgres\aio.py", line 81, in from_conn_string
+    async with await AsyncConnection.connect(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        conn_string, autocommit=True, prepare_threshold=0, row_factory=dict_row
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) as conn:
+    ^
+  File "D:\Personal Projects\dCortex-hackathon\.venv\Lib\site-packages\psycopg\connection_async.py", line 146, in connect
+    raise new_ex.with_traceback(None)
+psycopg.OperationalError: connection failed: connection to server at "127.0.0.1", port 5432 failed: FATAL:  password authentication failed for user "postgres"
+Multiple connection attempts failed. All failures were:
+- host: 'localhost', port: '5432', hostaddr: '::1': connection failed: connection to server at "::1", port 5432 failed: FATAL:  password authentication failed for user "postgres"
+- host: 'localhost', port: '5432', hostaddr: '127.0.0.1': connection failed: connection to server at "127.0.0.1", port 5432 failed: FATAL:  password authentication failed for user "postgres"
+
+ERROR:    Application startup failed. Exiting.
